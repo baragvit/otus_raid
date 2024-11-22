@@ -1,3 +1,6 @@
 *.md~
 *.un~
 .gitignore~
+*.vdi
+.vagrant/
+Vagrantfile~
