@@ -1,74 +1,38 @@
-# -*- mode: ruby -*-
-# vim: set ft=ruby :
-
-MACHINES = {
-  :otuslinux => {
-        :box_name => "centos/7",
-        :ip_addr => '192.168.56.2',
-	:disks => {
-		:sata1 => {
-			:dfile => './sata1.vdi',
-			:size => 250,
-			:port => 1
-		},
-		:sata2 => {
-                        :dfile => './sata2.vdi',
-                        :size => 250, # Megabytes
-			:port => 2
-		},
-                :sata3 => {
-                        :dfile => './sata3.vdi',
-                        :size => 250,
-                        :port => 3
-                },
-                :sata4 => {
-                        :dfile => './sata4.vdi',
-                        :size => 250, # Megabytes
-                        :port => 4
-                }
-
-	}
-
-		
-  },
-}
-
 Vagrant.configure("2") do |config|
+  # Use an Ubuntu box (you can change this to any Ubuntu version or another box you prefer)
+  config.vm.box = "ubuntu/bionic64"  # This is Ubuntu 18.04 LTS
 
-  MACHINES.each do |boxname, boxconfig|
-
-      config.vm.define boxname do |box|
-
-          box.vm.box = boxconfig[:box_name]
-          box.vm.host_name = boxname.to_s
-
-          #box.vm.network "forwarded_port", guest: 3260, host: 3260+offset
-
-          box.vm.network "private_network", ip: boxconfig[:ip_addr]
-
-          box.vm.provider :virtualbox do |vb|
-            	  vb.customize ["modifyvm", :id, "--memory", "1024"]
-                  needsController = false
-		  boxconfig[:disks].each do |dname, dconf|
-			  unless File.exist?(dconf[:dfile])
-				vb.customize ['createhd', '--filename', dconf[:dfile], '--variant', 'Fixed', '--size', dconf[:size]]
-                                needsController =  true
-                          end
-
-		  end
-                  if needsController == true
-                     vb.customize ["storagectl", :id, "--name", "SATA", "--add", "sata" ]
-                     boxconfig[:disks].each do |dname, dconf|
-                         vb.customize ['storageattach', :id,  '--storagectl', 'SATA', '--port', dconf[:port], '--device', 0, '--type', 'hdd', '--medium', dconf[:dfile]]
-                     end
-                  end
-          end
- 	  box.vm.provision "shell", inline: <<-SHELL
-	      mkdir -p ~root/.ssh
-              cp ~vagrant/.ssh/auth* ~root/.ssh
-	      yum install -y mdadm smartmontools hdparm gdisk
-  	  SHELL
-
-      end
+  # Define the provider (in this case, VirtualBox)
+  config.vm.provider "virtualbox" do |vb|
+    # Create the first additional disk (10GB)
+    vb.customize ["createhd", "--filename", "disk1.vdi", "--size", 10240]  # 10GB disk
+    vb.customize ["storageattach", :id, "--storagectl", "SATA", "--port", 1, "--device", 0, "--type", "hdd", "--medium", "disk1.vdi"]
+    
+    # Create the second additional disk (20GB)
+    vb.customize ["createhd", "--filename", "disk2.vdi", "--size", 20480]  # 20GB disk
+    vb.customize ["storageattach", :id, "--storagectl", "SATA", "--port", 2, "--device", 0, "--type", "hdd", "--medium", "disk2.vdi"]
+    
+    # Optionally, you can configure other VirtualBox settings like memory and CPU
+    vb.memory = "1024"  # Set memory for the VM (in MB)
+    vb.cpus = 2         # Set the number of CPUs
   end
+
+  # Configure a private network (optional, for VM networking)
+  config.vm.network "private_network", type: "dhcp"
+
+  # Set up a simple shell provisioner to format and mount the disks
+  config.vm.provision "shell", inline: <<-SHELL
+    # Format and mount disk1
+    sudo mkfs.ext4 /dev/sdb
+    sudo mkdir -p /mnt/disk1
+    sudo mount /dev/sdb /mnt/disk1
+    echo '/dev/sdb /mnt/disk1 ext4 defaults 0 0' | sudo tee -a /etc/fstab
+
+    # Format and mount disk2
+    sudo mkfs.ext4 /dev/sdc
+    sudo mkdir -p /mnt/disk2
+    sudo mount /dev/sdc /mnt/disk2
+    echo '/dev/sdc /mnt/disk2 ext4 defaults 0 0' | sudo tee -a /etc/fstab
+  SHELL
 end
+
